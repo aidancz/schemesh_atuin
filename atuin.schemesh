@@ -17,14 +17,15 @@
 
 (define atuin-before-parse
   (lambda (cmd)
-    (env-set!
-      "ATUIN_HISTORY_ID"
-      (sh-run/string-rtrim-newlines
-        {
-          ATUIN_SHELL=schemesh atuin history start --hook \
-          -- (values cmd) 2>/dev/null
-        }
-      ))))
+    (unless (string=? cmd "")
+      (env-set!
+        "ATUIN_HISTORY_ID"
+        (sh-run/string-rtrim-newlines
+          {
+            ATUIN_SHELL=schemesh atuin history start --hook \
+            -- (values cmd) 2>/dev/null
+          }
+        )))))
 
 (let ((repl-original-parse (repl-current-parse)))
   (repl-current-parse
@@ -40,7 +41,8 @@
              (time-after-eval (current-time)))
         (unless (string=? (env-ref "ATUIN_HISTORY_ID") "")
           (sh-run
-            {
+            ;; we use a subshell here
+            {[
               atuin history end --hook \
               --exit (if (status? (car vals))
                          (cond
@@ -51,7 +53,7 @@
                            (time-nanosecond
                              (time-difference time-after-eval time-before-eval))) \
               -- $ATUIN_HISTORY_ID >/dev/null 2>&1 &
-            }
+            ]}
           )
           (env-delete! "ATUIN_HISTORY_ID"))
         vals))))
