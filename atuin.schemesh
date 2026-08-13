@@ -6,6 +6,10 @@
   (lambda (name val)
     (sh-env-set! (sh-globals) name val 'export)))
 
+(define env-delete!
+  (lambda (name)
+    (sh-env-delete! (sh-globals) name)))
+
 (when (or (string=? (env-ref "ATUIN_SESSION") "")
           (not (string=? (env-ref "ATUIN_SHLVL") (env-ref "SHLVL"))))
   (env-set! "ATUIN_SESSION" (sh-run/string-rtrim-newlines {atuin uuid}))
@@ -16,7 +20,10 @@
     (env-set!
       "ATUIN_HISTORY_ID"
       (sh-run/string-rtrim-newlines
-        {ATUIN_SHELL=schemesh atuin history start --hook -- (values cmd) 2>/dev/null}
+        {
+          ATUIN_SHELL=schemesh atuin history start --hook \
+          -- (values cmd) 2>/dev/null
+        }
       ))))
 
 (let ((repl-original-parse (repl-current-parse)))
@@ -35,5 +42,16 @@
           (sh-run
             {
               atuin history end --hook \
+              --exit (if (status? (car vals))
+                         (cond
+                           ((ok? (car vals)) "0")
+                           (else (number->string (status->value (car vals)))))
+                         "0") \
+              --duration (number->string
+                           (time-nanosecond
+                             (time-difference time-after-eval time-before-eval))) \
+              -- $ATUIN_HISTORY_ID >/dev/null 2>&1 &
             }
           )
+          (env-delete! "ATUIN_HISTORY_ID"))
+        vals))))
