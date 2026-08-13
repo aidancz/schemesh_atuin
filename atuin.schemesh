@@ -33,27 +33,35 @@
       (atuin-before-parse str)
       (repl-original-parse lctx initial-parser str))))
 
+(define repl-eval-result->exit-status
+  (lambda (result)
+    (if (status? (car result))
+        (cond
+          ((ok? (car result)) 0)
+          (else (status->value (car result))))
+        0)))
+
+(define atuin-after-eval
+  (lambda (exit-status time-duration)
+    (unless (string=? (env-ref "ATUIN_HISTORY_ID") "")
+      (sh-run
+        ;; we use a subshell here
+        {[
+          atuin history end --hook \
+          --exit (number->string exit-status) \
+          --duration (number->string (time-nanosecond time-duration)) \
+          -- $ATUIN_HISTORY_ID >/dev/null 2>&1 &
+        ]}
+      )
+      (env-delete! "ATUIN_HISTORY_ID"))))
+
 (let ((repl-original-eval (repl-current-eval)))
   (repl-current-eval
     (lambda (form env)
       (let* ((time-before-eval (current-time)) ; we use let* here to evaluate its bindings in sequence
              (vals (repl-original-eval form env))
              (time-after-eval (current-time)))
-        (unless (string=? (env-ref "ATUIN_HISTORY_ID") "")
-          (sh-run
-            ;; we use a subshell here
-            {[
-              atuin history end --hook \
-              --exit (if (status? (car vals))
-                         (cond
-                           ((ok? (car vals)) "0")
-                           (else (number->string (status->value (car vals)))))
-                         "0") \
-              --duration (number->string
-                           (time-nanosecond
-                             (time-difference time-after-eval time-before-eval))) \
-              -- $ATUIN_HISTORY_ID >/dev/null 2>&1 &
-            ]}
-          )
-          (env-delete! "ATUIN_HISTORY_ID"))
+        (atuin-after-eval
+          (repl-eval-result->exit-status vals)
+          (time-difference time-after-eval time-before-eval))
         vals))))
