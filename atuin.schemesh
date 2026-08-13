@@ -1,0 +1,39 @@
+(define env-ref
+  (lambda (name)
+    (sh-env-ref (sh-globals) name)))
+
+(define env-set!
+  (lambda (name val)
+    (sh-env-set! (sh-globals) name val 'export)))
+
+(when (or (string=? (env-ref "ATUIN_SESSION") "")
+          (not (string=? (env-ref "ATUIN_SHLVL") (env-ref "SHLVL"))))
+  (env-set! "ATUIN_SESSION" (sh-run/string-rtrim-newlines {atuin uuid}))
+  (env-set! "ATUIN_SHLVL" (env-ref "SHLVL")))
+
+(define atuin-before-parse
+  (lambda (cmd)
+    (env-set!
+      "ATUIN_HISTORY_ID"
+      (sh-run/string-rtrim-newlines
+        {ATUIN_SHELL=schemesh atuin history start --hook -- (values cmd) 2>/dev/null}
+      ))))
+
+(let ((repl-original-parse (repl-current-parse)))
+  (repl-current-parse
+    (lambda (lctx initial-parser str)
+      (atuin-before-parse str)
+      (repl-original-parse lctx initial-parser str))))
+
+(let ((repl-original-eval (repl-current-eval)))
+  (repl-current-eval
+    (lambda (form env)
+      (let* ((time-before-eval (current-time)) ; we use let* here to evaluate its bindings in sequence
+             (vals (repl-original-eval form env))
+             (time-after-eval (current-time)))
+        (unless (string=? (env-ref "ATUIN_HISTORY_ID") "")
+          (sh-run
+            {
+              atuin history end --hook \
+            }
+          )
