@@ -1,39 +1,31 @@
-(define env-ref
-  (lambda (name)
-    (sh-env-ref (sh-globals) name)))
+;; ATUIN_SESSION uniquely identifies the current shell session
+(when (or (string=? (sh-env-ref #t "ATUIN_SESSION") "")
+          (not (string=? (sh-env-ref #t "ATUIN_SHLVL") (sh-env-ref #t "SHLVL"))))
+  (sh-env-set! #t "ATUIN_SESSION" (sh-run/string-rtrim-newlines {atuin uuid}) 'export)
+  (sh-env-set! #t "ATUIN_SHLVL" (sh-env-ref #t "SHLVL")) 'export)
 
-(define env-set!
-  (lambda (name val)
-    (sh-env-set! (sh-globals) name val 'export)))
-
-(define env-delete!
-  (lambda (name)
-    (sh-env-delete! (sh-globals) name)))
-
-(when (or (string=? (env-ref "ATUIN_SESSION") "")
-          (not (string=? (env-ref "ATUIN_SHLVL") (env-ref "SHLVL"))))
-  (env-set! "ATUIN_SESSION" (sh-run/string-rtrim-newlines {atuin uuid}))
-  (env-set! "ATUIN_SHLVL" (env-ref "SHLVL")))
-
-(define atuin-before-parse
+(define _atuin-before-parse
   (lambda (cmd)
     (unless (string=? cmd "")
-      (env-set!
+      (sh-env-set!
+        #t
         "ATUIN_HISTORY_ID"
         (sh-run/string-rtrim-newlines
           {
-            ATUIN_SHELL=schemesh atuin history start --hook \
+            ATUIN_SHELL=schemesh \
+            atuin history start --hook \
             -- (values cmd) 2>/dev/null
           }
-        )))))
+        )
+        'export))))
 
 (let ((repl-original-parse (repl-current-parse)))
   (repl-current-parse
     (lambda (lctx initial-parser str)
-      (atuin-before-parse str)
+      (_atuin-before-parse str)
       (repl-original-parse lctx initial-parser str))))
 
-(define repl-eval-result->exit-status
+(define _repl-eval-result->exit-status
   (lambda (result)
     (if (status? (car result))
         (cond
@@ -41,9 +33,9 @@
           (else (status->value (car result))))
         0)))
 
-(define atuin-after-eval
+(define _atuin-after-eval
   (lambda (exit-status time-duration)
-    (unless (string=? (env-ref "ATUIN_HISTORY_ID") "")
+    (unless (string=? (sh-env-ref #t "ATUIN_HISTORY_ID") "")
       (sh-run
         ;; we use a subshell here
         {[
@@ -53,7 +45,7 @@
           -- $ATUIN_HISTORY_ID >/dev/null 2>&1 &
         ]}
       )
-      (env-delete! "ATUIN_HISTORY_ID"))))
+      (sh-env-delete! #t "ATUIN_HISTORY_ID"))))
 
 (let ((repl-original-eval (repl-current-eval)))
   (repl-current-eval
@@ -61,7 +53,46 @@
       (let* ((time-before-eval (current-time)) ; we use let* here to evaluate its bindings in sequence
              (vals (repl-original-eval form env))
              (time-after-eval (current-time)))
-        (atuin-after-eval
-          (repl-eval-result->exit-status vals)
+        (_atuin-after-eval
+          (_repl-eval-result->exit-status vals)
           (time-difference time-after-eval time-before-eval))
         vals))))
+
+(define _atuin-search
+  (lambda (lctx ctrlr-or-uparrow)
+    (let* ((input (vlines->string (linectx-vscreen lctx)))
+           (job
+            {
+              ATUIN_SHELL=schemesh \
+              atuin search --interactive \
+              (cond
+                ((eq? ctrlr-or-uparrow 'ctrlr) "")
+                ((eq? ctrlr-or-uparrow 'uparrow) "--shell-up-key-binding"))
+            })
+           (_ (sh-env-set! job "ATUIN_QUERY" input 'private))
+           (output (sh-run/string-rtrim-newlines job)))
+      (cond
+        ((string=? output "") (void))
+        ((string-prefix? output "__atuin_accept__:")
+         (linectx-clear! lctx)
+         (linectx-insert/string! lctx (string-replace-prefix output "__atuin_accept__:" ""))
+         (linectx-return-set! lctx #t))
+        (else
+         (linectx-clear! lctx)
+         (linectx-insert/string! lctx output))))))
+
+(define atuin-search-ctrlr
+  (lambda (lctx) (_atuin-search lctx 'ctrlr)))
+
+(define atuin-search-uparrow
+  (lambda (lctx) (_atuin-search lctx 'uparrow)))
+
+(linectx-keytable-insert! linectx-default-keytable
+  atuin-search-ctrlr
+  "\x1b;OQ\x1b;OQ")
+
+(sh-run/start
+  {
+    ATUIN_SHELL=schemesh \
+    atuin __internal prepare-search-index >/dev/null 2>&1
+  })
