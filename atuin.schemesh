@@ -63,14 +63,14 @@
   (lambda (lctx ctrlr-or-uparrow)
     (let* ((input (vlines->string (linectx-vscreen lctx)))
            (job
-            {
-              ATUIN_SHELL=schemesh \
-              atuin search --interactive \
+            (shell
+              "ATUIN_SHELL" = "schemesh"
+              "ATUIN_QUERY" = (values input)
+              "atuin" "search" "--interactive"
               (cond
                 ((eq? ctrlr-or-uparrow 'ctrlr) (void))
                 ((eq? ctrlr-or-uparrow 'uparrow) "--shell-up-key-binding"))
-            })
-           (_ (sh-env-set! job "ATUIN_QUERY" input 'export))
+              3 >& "1" 1 >& "2" 2 >& "3" 3 >& "-"))
            (output (sh-run/string-rtrim-newlines job)))
       (cond
         ((string=? output "") (void))
