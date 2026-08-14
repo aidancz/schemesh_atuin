@@ -42,8 +42,9 @@
           atuin history end --hook \
           --exit (number->string exit-status) \
           --duration (number->string (time-nanosecond time-duration)) \
-          -- $ATUIN_HISTORY_ID >/dev/null 2>&1 &
+          -- $ATUIN_HISTORY_ID >/dev/null 2>/dev/null &
         ]}
+          ;; -- $ATUIN_HISTORY_ID >/dev/null 2>&1 &
       )
       (sh-env-delete! #t "ATUIN_HISTORY_ID"))))
 
@@ -66,10 +67,10 @@
               ATUIN_SHELL=schemesh \
               atuin search --interactive \
               (cond
-                ((eq? ctrlr-or-uparrow 'ctrlr) "")
+                ((eq? ctrlr-or-uparrow 'ctrlr) (void))
                 ((eq? ctrlr-or-uparrow 'uparrow) "--shell-up-key-binding"))
             })
-           (_ (sh-env-set! job "ATUIN_QUERY" input 'private))
+           (_ (sh-env-set! job "ATUIN_QUERY" input 'export))
            (output (sh-run/string-rtrim-newlines job)))
       (cond
         ((string=? output "") (void))
@@ -91,8 +92,8 @@
   atuin-search-ctrlr
   "\x1b;OQ\x1b;OQ")
 
-(sh-run/start
-  {
-    ATUIN_SHELL=schemesh \
-    atuin __internal prepare-search-index >/dev/null 2>&1
-  })
+;; (sh-run
+;;   {[
+;;     ATUIN_SHELL=schemesh \
+;;     atuin __internal prepare-search-index >/dev/null 2>&1 &
+;;   ]})
