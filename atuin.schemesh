@@ -33,18 +33,24 @@
           (else (status->value (car result))))
         0)))
 
+(define _time-duration->duration-nanosecond
+  (lambda (time-duration)
+    (+ (* (time-second time-duration) (expt 10 9))
+       (time-nanosecond time-duration))))
+
 (define _atuin-after-eval
-  (lambda (exit-status time-duration)
+  (lambda (exit-status duration-nanosecond)
     (unless (string=? (sh-env-ref #t "ATUIN_HISTORY_ID") "")
       (sh-run
         ;; we use a subshell here
         {[
           atuin history end --hook \
           --exit (number->string exit-status) \
-          --duration (number->string (time-nanosecond time-duration)) \
+          --duration (number->string duration-nanosecond) \
           -- $ATUIN_HISTORY_ID >/dev/null 2>/dev/null &
         ]}
           ;; -- $ATUIN_HISTORY_ID >/dev/null 2>&1 &
+          ;; TODO: https://github.com/cosmos72/schemesh/issues/80
       )
       (sh-env-delete! #t "ATUIN_HISTORY_ID"))))
 
@@ -56,7 +62,8 @@
              (time-after-eval (current-time)))
         (_atuin-after-eval
           (_repl-eval-result->exit-status vals)
-          (time-difference time-after-eval time-before-eval))
+          (_time-duration->duration-nanosecond
+            (time-difference time-after-eval time-before-eval)))
         vals))))
 
 (define _atuin-search
@@ -70,7 +77,10 @@
               (cond
                 ((eq? ctrlr-or-uparrow 'ctrlr) (void))
                 ((eq? ctrlr-or-uparrow 'uparrow) "--shell-up-key-binding"))
-              3 >& "1" 1 >& "2" 2 >& "3" 3 >& "-"))
+              ;; 3 >& "1" 1 >& "2" 2 >& "3" 3 >& "-"
+              ;; NOTE: normally, stderr and stdout need to be swapped here, but it seems to work fine without the swap. not sure why yet
+              ;; https://github.com/atuinsh/atuin/issues/3922
+            ))
            (output (sh-run/string-rtrim-newlines job)))
       (cond
         ((string=? output "") (void))
@@ -90,10 +100,15 @@
 
 (linectx-keytable-insert! linectx-default-keytable
   atuin-search-ctrlr
-  "\x1b;OQ\x1b;OQ")
+  "\x12;") ; ctrl-r
+
+;; (linectx-keytable-insert! linectx-default-keytable
+;;   atuin-search-uparrow
+;;   "\x1b;[A") ; up-arrow
 
 ;; (sh-run
 ;;   {[
 ;;     ATUIN_SHELL=schemesh \
 ;;     atuin __internal prepare-search-index >/dev/null 2>&1 &
 ;;   ]})
+;; this "atuin __internal" command cannot be run, but other scripts still retain it
