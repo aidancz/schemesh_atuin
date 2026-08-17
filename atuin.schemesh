@@ -1,8 +1,8 @@
-;; ATUIN_SESSION uniquely identifies the current shell session
 (when (or (string=? (sh-env-ref #t "ATUIN_SESSION") "")
           (not (string=? (sh-env-ref #t "ATUIN_SHLVL") (sh-env-ref #t "SHLVL"))))
   (sh-env-set! #t "ATUIN_SESSION" (sh-run/string-rtrim-newlines {atuin uuid}) 'export)
   (sh-env-set! #t "ATUIN_SHLVL" (sh-env-ref #t "SHLVL")) 'export)
+;; assign a unique ATUIN_SESSION to each shell session
 
 (define _atuin-before-parse
   (lambda (cmd)
@@ -47,17 +47,16 @@
           atuin history end --hook \
           --exit (number->string exit-status) \
           --duration (number->string duration-nanosecond) \
-          -- $ATUIN_HISTORY_ID >/dev/null 2>/dev/null &
+          -- $ATUIN_HISTORY_ID >/dev/null 2>&1 &
         ]}
-          ;; -- $ATUIN_HISTORY_ID >/dev/null 2>&1 &
-          ;; TODO: https://github.com/cosmos72/schemesh/issues/80
       )
       (sh-env-delete! #t "ATUIN_HISTORY_ID"))))
 
 (let ((repl-original-eval (repl-current-eval)))
   (repl-current-eval
     (lambda (form env)
-      (let* ((time-before-eval (current-time)) ; we use let* here to evaluate its bindings in sequence
+      ;; we use let* here to evaluate its bindings in sequence
+      (let* ((time-before-eval (current-time))
              (vals (repl-original-eval form env))
              (time-after-eval (current-time)))
         (_atuin-after-eval
@@ -78,7 +77,7 @@
                 ((eq? ctrlr-or-uparrow 'ctrlr) (void))
                 ((eq? ctrlr-or-uparrow 'uparrow) "--shell-up-key-binding"))
               ;; 3 >& "1" 1 >& "2" 2 >& "3" 3 >& "-"
-              ;; NOTE: normally, stderr and stdout need to be swapped here, but it seems to work fine without the swap. not sure why yet
+              ;; NOTE: normally, stderr and stdout need to be swapped here; otherwise, atuin can only run in fullscreen mode, not inline mode
               ;; https://github.com/atuinsh/atuin/issues/3922
             ))
            (output (sh-run/string-rtrim-newlines job)))
@@ -93,18 +92,22 @@
          (linectx-insert/string! lctx output))))))
 
 (define atuin-search-ctrlr
-  (lambda (lctx) (_atuin-search lctx 'ctrlr)))
+  (lambda (lctx)
+    (_atuin-search lctx 'ctrlr)))
 
 (define atuin-search-uparrow
-  (lambda (lctx) (_atuin-search lctx 'uparrow)))
+  (lambda (lctx)
+    (if (fx>? (linectx-iy lctx) 0)
+      (vscreen-cursor-move/up! (linectx-vscreen lctx) 1)
+      (_atuin-search lctx 'uparrow))))
 
 (linectx-keytable-insert! linectx-default-keytable
   atuin-search-ctrlr
   "\x12;") ; ctrl-r
 
-;; (linectx-keytable-insert! linectx-default-keytable
-;;   atuin-search-uparrow
-;;   "\x1b;[A") ; up-arrow
+(linectx-keytable-insert! linectx-default-keytable
+  atuin-search-uparrow
+  "\x1b;[A") ; up-arrow
 
 ;; (sh-run
 ;;   {[
