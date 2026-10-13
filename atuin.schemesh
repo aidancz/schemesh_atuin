@@ -81,6 +81,7 @@
               3 >& "1" 1 >& "2" 2 >& "3" 3 >& "-"
             ))
            (output (sh-run/string-rtrim-newlines job)))
+      (linectx-redraw-all lctx) ; required for inline mode
       (cond
         ((string=? output "") (void))
         ((string-prefix? output "__atuin_accept__:")
