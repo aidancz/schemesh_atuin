@@ -1,4 +1,5 @@
 ;; TODO: (c-pid-get)
+;; TODO: signal handling
 
 (when (or (string=? (sh-env-ref #t "ATUIN_SESSION") "")
           (not (string=? (sh-env-ref #t "ATUIN_SHLVL") (sh-env-ref #t "SHLVL"))))
@@ -30,10 +31,14 @@
 (define _repl-eval-result->exit-status
   (lambda (result)
     (if (status? (car result))
-        (cond
-          ((ok? (car result)) 0)
-          (else (status->value (car result))))
+        (let* ((status (car result))
+               (value (status->value status)))
+          (cond
+            ((ok? status) 0)
+            ((and (fixnum? value) (fx<=? 1 value 255)) value)
+            (else 255)))
         0)))
+;; NOTE: signal handling is missing; e.g. SIGINT should return 130, but currently returns 255
 
 (define _time-duration->duration-nanosecond
   (lambda (time-duration)
