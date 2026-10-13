@@ -1,3 +1,5 @@
+;; TODO: (c-pid-get)
+
 (when (or (string=? (sh-env-ref #t "ATUIN_SESSION") "")
           (not (string=? (sh-env-ref #t "ATUIN_SHLVL") (sh-env-ref #t "SHLVL"))))
   (sh-env-set! #t "ATUIN_SESSION" (sh-run/string-rtrim-newlines {atuin uuid}) 'export)
@@ -74,11 +76,9 @@
               "ATUIN_QUERY" = (values input)
               "atuin" "search" "--interactive"
               (cond
-                ((eq? ctrlr-or-uparrow 'ctrlr) (void))
+                ((eq? ctrlr-or-uparrow 'ctrlr) '())
                 ((eq? ctrlr-or-uparrow 'uparrow) "--shell-up-key-binding"))
-              ;; 3 >& "1" 1 >& "2" 2 >& "3" 3 >& "-"
-              ;; NOTE: normally, stderr and stdout need to be swapped here; otherwise, atuin can only run in fullscreen mode, not inline mode
-              ;; https://github.com/atuinsh/atuin/issues/3922
+              3 >& "1" 1 >& "2" 2 >& "3" 3 >& "-"
             ))
            (output (sh-run/string-rtrim-newlines job)))
       (cond
